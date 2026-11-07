@@ -94,14 +94,26 @@ done
 parse_compiler_version "$APCI_DEVICE_COMPILER"
 load_variable_if_not_exist APCI_CMAKE_BIN_PATH
 
+BUILD_CMD=("${APCI_CMAKE_BIN_PATH}/cmake" --build /build "-j${APCI_BUILD_THREADS}")
+
+if [[ "${APCI_PANTHEONSIM:-0}" != 0 ]]; then
+    # shellcheck source=script/ci/pantheonsim/env.sh
+    source "${APCI_ALPAKA_ROOT}/script/ci/pantheonsim/env.sh"
+    # shellcheck source=script/ci/pantheonsim/config.sh
+    source "${APCI_ALPAKA_ROOT}/script/ci/pantheonsim/config.sh"
+
+    # Only build the selected unit tests.
+    # Catch2 test discovery runs the test executables during the build. Therefore, the build needs to run in the
+    # simulator (--preload also covers the child processes started by CMake).
+    BUILD_CMD=("${APCI_VGPU}" run --preload "${BUILD_CMD[@]}" --target "${APCI_PANTHEONSIM_TARGETS[@]}")
+fi
+
 echo_green \
     "$(echo_if_not_empty LD_LIBRARY_PATH)" \
     "$(echo_if_not_empty_and_set ASAN_OPTIONS)" \
     "$(echo_if_not_empty_and_set TSAN_OPTIONS)" \
     "$(echo_if_not_empty_and_set LSAN_OPTIONS)" \
     "$(echo_if_not_empty_and_set UBSAN_OPTIONS)" \
-    "${APCI_CMAKE_BIN_PATH}/cmake" \
-    --build /build \
-    "-j${APCI_BUILD_THREADS}"
+    "${BUILD_CMD[*]}"
 
-"${APCI_CMAKE_BIN_PATH}/cmake" --build /build "-j${APCI_BUILD_THREADS}"
+"${BUILD_CMD[@]}"

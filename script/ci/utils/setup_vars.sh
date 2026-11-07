@@ -53,6 +53,11 @@ if [[ -n ${GITHUB_ACTIONS+x} ]]; then
         export APCI_ONEAPI_TARGET=none
     fi
 
+    # GPU simulator (PantheonSim): 0 means disabled, otherwise the simulated GPU, e.g. nvidia/h100
+    if [[ -z ${APCI_PANTHEONSIM+x} ]]; then
+        export APCI_PANTHEONSIM=0
+    fi
+
     if [[ -z ${APCI_TBB+x} ]]; then
         export APCI_TBB="OFF"
     fi

@@ -1,0 +1,107 @@
+name: GPU tests (simulated)
+
+# Optional, non-required check. The CI runners have no GPU, so this runs a subset
+# of the unit tests with the CUDA backend on a simulated NVIDIA H100
+# (https://github.com/pantheongpu/pantheonsim). A simulator cannot reproduce
+# hardware-specific behaviour or timing, so it complements real-GPU testing and
+# does not replace it.
+#
+# The job only calls the scripts in script/ci/ (same as ci.yml), so it can be
+# reproduced locally in the container. The simulator is installed by
+# script/ci/install/pantheonsim.sh, the selected tests are listed in
+# script/ci/pantheonsim/config.sh.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ dev_v3.x ]
+  pull_request:
+    branches: [ dev_v3.x ]
+
+permissions:
+  contents: read
+
+# Stop the run for a PR if the PR is updated.
+# Stop the run for dev_v3.x if a new PR is merged into dev_v3.x.
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('ref-{0}', github.ref) }}
+  cancel-in-progress: true
+
+env:
+  APCI_ALPAKA_ROOT: ${{ github.workspace }}
+
+jobs:
+  gpu-tests:
+    name: CUDA unit tests on a simulated H100
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    # The simulator is built against the headers of the CUDA toolkit and needs at least CUDA 13.0.2.
+    container:
+      image: nvidia/cuda:13.0.2-devel-ubuntu24.04
+
+    env:
+      APCI_DEVICE_COMPILER: nvcc@13.0
+      APCI_HOST_COMPILER: gcc@13
+      APCI_CMAKE: 3.28.3
+      APCI_CUDA: 13.0
+      APCI_RUN_CTEST: ON
+      APCI_HWLOC: OFF
+      APCI_BUILD_THREADS: 3
+      # simulated GPU
+      APCI_PANTHEONSIM: nvidia/h100
+      APCI_PANTHEONSIM_BUILD_DIR: /opt/pantheonsim-build
+      APCI_PANTHEONSIM_SRC_DIR: /opt/pantheonsim-src
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: export GitHub Actions variables to environment variables
+        run: |
+          echo "APCI_IMAGE_NAME=nvidia/cuda:13.0.2-devel-ubuntu24.04" >> $GITHUB_ENV
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+              echo "APCI_GIT_URL=${{ github.event.pull_request.head.repo.clone_url }}" >> $GITHUB_ENV
+              echo "APCI_BRANCH_NAME=${{ github.event.pull_request.head.ref }}" >> $GITHUB_ENV
+          else
+              echo "APCI_GIT_URL=https://github.com/${{ github.repository }}.git" >> $GITHUB_ENV
+              echo "APCI_BRANCH_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
+
+      - name: job configuration environment variables
+        run: "${APCI_ALPAKA_ROOT}/script/ci/info.sh"
+
+      - name: Install base dependencies
+        run: "${APCI_ALPAKA_ROOT}/script/ci/install/basic.sh"
+
+      - name: Install CMake
+        run: "${APCI_ALPAKA_ROOT}/script/ci/install/cmake.sh"
+
+      - name: Install GCC
+        run: "${APCI_ALPAKA_ROOT}/script/ci/install/gcc.sh"
+
+      - name: Install CUDA
+        run: "${APCI_ALPAKA_ROOT}/script/ci/install/cuda.sh"
+
+      # Building the simulator takes a long time, therefore reuse the build as long as the
+      # simulator version (set in install/pantheonsim.sh) and the container do not change.
+      - name: Restore the simulator build
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ env.APCI_PANTHEONSIM_BUILD_DIR }}
+          key: pantheonsim-${{ hashFiles('script/ci/install/pantheonsim.sh') }}-${{ env.APCI_IMAGE_NAME }}
+
+      - name: Install the GPU simulator
+        run: "${APCI_ALPAKA_ROOT}/script/ci/install/pantheonsim.sh"
+
+      - name: Configure CMake
+        run: "${APCI_ALPAKA_ROOT}/script/ci/configure.sh"
+
+      - name: Compile Code
+        run: "${APCI_ALPAKA_ROOT}/script/ci/build.sh"
+
+      - name: Run tests
+        run: "${APCI_ALPAKA_ROOT}/script/ci/test.sh"

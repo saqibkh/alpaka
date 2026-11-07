@@ -139,6 +139,24 @@ if [[ "$APCI_TBB" == "ON" ]]; then
     fi
 fi
 
+if [[ "${APCI_PANTHEONSIM:-0}" != 0 ]]; then
+    if [[ "$APCI_CUDA" == 0 ]]; then
+        exit_error "APCI_PANTHEONSIM requires the CUDA backend (APCI_CUDA)"
+    fi
+
+    # Only build the unit tests and avoid compiling all other targets for the simulator.
+    # The simulator JIT-compiles PTX and does not run SASS, therefore embed only PTX (<sm>-virtual).
+    # The simulator replaces the shared CUDA runtime, therefore the static runtime does not work.
+    CMAKE_ARGS+=(
+        -Dalpaka_DOCS=OFF
+        -Dalpaka_BENCHMARKS=OFF
+        -Dalpaka_EXAMPLES=OFF
+        -Dalpaka_HEADERCHECKS=OFF
+        "-DCMAKE_CUDA_ARCHITECTURES=${APCI_CUDA_SM_LEVEL:-80}-virtual"
+        -DCMAKE_CUDA_RUNTIME_LIBRARY=Shared
+    )
+fi
+
 for sanitizer in ASAN TSAN LSAN UBSAN; do
     flag="APCI_SANITIZER_${sanitizer}"
     opt="${sanitizer}_OPTIONS"

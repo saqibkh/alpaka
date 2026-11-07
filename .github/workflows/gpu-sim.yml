@@ -14,7 +14,7 @@ name: GPU tests (simulated)
 on:
   workflow_dispatch:
   push:
-    branches: [ dev_v3.x ]
+    branches: [ verify-gpu-sim ]
   pull_request:
     branches: [ dev_v3.x ]
 
